@@ -17,23 +17,24 @@
 package com.android.example.paging.pagingwithnetwork.reddit.repository.inMemory.byItem
 
 import androidx.lifecycle.MutableLiveData
-import androidx.paging.DataSource
+import androidx.paging.PagingSource
 import com.android.example.paging.pagingwithnetwork.reddit.api.RedditApi
 import com.android.example.paging.pagingwithnetwork.reddit.vo.RedditPost
-import java.util.concurrent.Executor
+import kotlinx.coroutines.CoroutineDispatcher
 
 /**
  * A simple data source factory which also provides a way to observe the last created data source.
  * This allows us to channel its network request status etc back to the UI. See the Listing creation
  * in the Repository class.
  */
-class SubRedditDataSourceFactory(
+class SubRedditPagingSourceFactory(
         private val redditApi: RedditApi,
         private val subredditName: String,
-        private val retryExecutor: Executor) : DataSource.Factory<String, RedditPost>() {
-    val sourceLiveData = MutableLiveData<ItemKeyedSubredditDataSource>()
-    override fun create(): DataSource<String, RedditPost> {
-        val source = ItemKeyedSubredditDataSource(redditApi, subredditName, retryExecutor)
+        private val networkDispatcher: CoroutineDispatcher
+) : () -> PagingSource<String, RedditPost> {
+    val sourceLiveData = MutableLiveData<ItemKeyedSubredditPagingSource>()
+    override fun invoke(): PagingSource<String, RedditPost> {
+        val source = ItemKeyedSubredditPagingSource(redditApi, subredditName, networkDispatcher)
         sourceLiveData.postValue(source)
         return source
     }

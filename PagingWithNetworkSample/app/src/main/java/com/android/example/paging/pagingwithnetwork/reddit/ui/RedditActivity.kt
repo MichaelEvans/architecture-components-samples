@@ -24,19 +24,19 @@ import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.AbstractSavedStateViewModelFactory
-import androidx.lifecycle.Observer
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import androidx.paging.PagedList
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
+import androidx.lifecycle.lifecycleScope
+import androidx.paging.LoadState
+import androidx.paging.LoadType
+import androidx.paging.PagingData
 import com.android.example.paging.pagingwithnetwork.GlideApp
 import com.android.example.paging.pagingwithnetwork.R
 import com.android.example.paging.pagingwithnetwork.reddit.ServiceLocator
-import com.android.example.paging.pagingwithnetwork.reddit.repository.NetworkState
 import com.android.example.paging.pagingwithnetwork.reddit.repository.RedditPostRepository
-import com.android.example.paging.pagingwithnetwork.reddit.vo.RedditPost
 import kotlinx.android.synthetic.main.activity_reddit.*
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * A list activity that shows reddit posts in the given sub-reddit.
@@ -52,6 +52,8 @@ class RedditActivity : AppCompatActivity() {
             return intent
         }
     }
+
+    private var refreshListener: ((LoadType, LoadState) -> Unit)? = null
 
     private val model: SubRedditViewModel by viewModels {
         object : AbstractSavedStateViewModelFactory(this, null) {
@@ -78,34 +80,38 @@ class RedditActivity : AppCompatActivity() {
         initSearch()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        refreshListener?.let { (list.adapter as? PostsAdapter)?.removeLoadStateListener(it) }
+        refreshListener = null
+    }
+
     private fun initAdapter() {
         val glide = GlideApp.with(this)
-        val adapter = PostsAdapter(glide) {
-            model.retry()
-        }
-        list.adapter = adapter
-        model.posts.observe(this, Observer<PagedList<RedditPost>> {
-            adapter.submitList(it) {
-                // Workaround for an issue where RecyclerView incorrectly uses the loading / spinner
-                // item added to the end of the list as an anchor during initial load.
-                val layoutManager = (list.layoutManager as LinearLayoutManager)
-                val position = layoutManager.findFirstCompletelyVisibleItemPosition()
-                if (position != RecyclerView.NO_POSITION) {
-                    list.scrollToPosition(position)
-                }
+        val adapter = PostsAdapter(glide)
+        list.adapter = adapter.withLoadStateHeaderAndFooter(
+                header = PostsLoadStateAdapter(adapter),
+                footer = PostsLoadStateAdapter(adapter)
+        )
+
+        refreshListener = { loadType: LoadType, loadState: LoadState ->
+            if (loadType == LoadType.REFRESH) {
+                swipe_refresh.isRefreshing = loadState == LoadState.Loading
             }
-        })
-        model.networkState.observe(this, Observer {
-            adapter.setNetworkState(it)
-        })
+        }.also { refreshListener ->
+            adapter.addLoadStateListener(refreshListener)
+        }
+
+        lifecycleScope.launch {
+            model.posts.collect {
+                adapter.presentData(it)
+            }
+        }
     }
 
     private fun initSwipeToRefresh() {
-        model.refreshState.observe(this, Observer {
-            swipe_refresh.isRefreshing = it == NetworkState.LOADING
-        })
         swipe_refresh.setOnRefreshListener {
-            model.refresh()
+            (list.adapter as? PostsAdapter)?.refresh()
         }
     }
 
@@ -130,11 +136,9 @@ class RedditActivity : AppCompatActivity() {
 
     private fun updatedSubredditFromInput() {
         input.text.trim().toString().let {
-            if (it.isNotEmpty()) {
-                if (model.showSubreddit(it)) {
-                    list.scrollToPosition(0)
-                    (list.adapter as? PostsAdapter)?.submitList(null)
-                }
+            if (it.isNotEmpty() && model.showSubreddit(it)) {
+                list.scrollToPosition(0)
+                (list.adapter as? PostsAdapter)?.submitData(lifecycle, PagingData.empty())
             }
         }
     }

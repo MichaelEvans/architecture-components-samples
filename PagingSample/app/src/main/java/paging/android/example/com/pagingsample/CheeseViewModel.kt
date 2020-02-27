@@ -18,8 +18,9 @@ package paging.android.example.com.pagingsample
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.paging.Config
-import androidx.paging.toLiveData
+import androidx.paging.PagingConfig
+import androidx.paging.PagingDataFlow
+import kotlinx.coroutines.Dispatchers
 
 /**
  * A simple ViewModel that provides a paged list of delicious Cheeses.
@@ -31,7 +32,8 @@ class CheeseViewModel(app: Application) : AndroidViewModel(app) {
      * We use -ktx Kotlin extension functions here, otherwise you would use LivePagedListBuilder(),
      * and PagedList.Config.Builder()
      */
-    val allCheeses = dao.allCheesesByName().toLiveData(Config(
+    val allCheeses = PagingDataFlow(
+        PagingConfig(
             /**
              * A good page size is a value that fills at least a screen worth of content on a large
              * device so the User is unlikely to see a null item.
@@ -58,7 +60,16 @@ class CheeseViewModel(app: Application) : AndroidViewModel(app) {
              * <p>
              * This number triggers the PagedList to start dropping distant pages as more are loaded.
              */
-            maxSize = 200))
+
+            /**
+             * Maximum number of items a PagedList should hold in memory at once.
+             * <p>
+             * This number triggers the PagedList to start dropping distant pages as more are loaded.
+             */
+            maxSize = 200
+        ),
+        dao.allCheesesByName().asPagingSourceFactory(Dispatchers.IO)
+    )
 
     fun insert(text: CharSequence) = ioThread {
         dao.insert(Cheese(id = 0, name = text.toString()))
