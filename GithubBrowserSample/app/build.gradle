@@ -70,6 +70,11 @@ jacoco {
 }
 
 dependencies {
+    debugImplementation deps.facebook.flipper
+    debugImplementation deps.facebook.soloader
+
+    releaseImplementation deps.facebook.noopflipper
+
     implementation deps.app_compat
     implementation deps.recyclerview
     implementation deps.cardview
